@@ -1,0 +1,29 @@
+[project]
+name = "hybrid-search-rag"
+version = "0.1.0"
+description = "Hybrid search RAG over internal docs (dense + BM25 -> RRF -> rerank -> cited answers -> verification)"
+readme = "README.md"
+requires-python = ">=3.11"
+# Unpinned on purpose; `uv add` / `uv lock` resolves current versions.
+dependencies = [
+    "langchain-community",
+    "langchain-text-splitters",
+    "pinecone",
+    "rank-bm25",
+    "cohere",
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "python-dotenv",
+    "pyyaml",
+    "google-genai>=2.33.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
