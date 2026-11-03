@@ -31,12 +31,13 @@ def pinecone_api_key() -> str:
     return _require("PINECONE_API_KEY")
 
 
-PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "handbook-hybrid")
-COHERE_EMBED_MODEL = os.getenv("COHERE_EMBED_MODEL", "embed-v4.0")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "handbook-hybrid-gemma")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "embeddinggemma")
 COHERE_RERANK_MODEL = os.getenv("COHERE_RERANK_MODEL", "rerank-v3.5")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 HANDBOOK_DIR = Path(os.getenv("HANDBOOK_DIR", str(DATA_DIR / "handbook_repo" / "content" / "handbook")))
-EMBED_DIM = int(os.getenv("EMBED_DIM", "1536"))
+EMBED_DIM = int(os.getenv("EMBED_DIM", "768"))
 PINECONE_CLOUD = os.getenv("PINECONE_CLOUD", "aws")
 PINECONE_REGION = os.getenv("PINECONE_REGION", "us-east-1")
 CHUNKS_PATH = DATA_DIR / "chunks.jsonl"

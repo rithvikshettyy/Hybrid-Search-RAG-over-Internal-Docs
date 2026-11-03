@@ -1,51 +1,40 @@
-"""Dense retrieval: Cohere embeddings + Pinecone."""
+"""Dense retrieval: local Ollama embeddings (EmbeddingGemma) + Pinecone."""
 
 import time
 
-import cohere
 import httpx
 from pinecone import Pinecone
 
 from config import (
-    COHERE_EMBED_MODEL,
     EMBED_DIM,
+    OLLAMA_EMBED_MODEL,
+    OLLAMA_HOST,
     PINECONE_CLOUD,
     PINECONE_INDEX_NAME,
     PINECONE_REGION,
-    cohere_api_key,
     pinecone_api_key,
 )
 from schemas import Chunk
 
-EMBED_BATCH = 96  # Cohere embed max texts per request
-UPSERT_BATCH = EMBED_BATCH  # 1 embed request per upsert batch
-
-
-def _cohere() -> cohere.ClientV2:
-    return cohere.ClientV2(api_key=cohere_api_key())
+EMBED_BATCH = 32  # texts per Ollama /api/embed request (small GPU; bigger batches were no faster)
+UPSERT_BATCH = 96  # Pinecone upsert / resume-check granularity
 
 
 def _pinecone() -> Pinecone:
     return Pinecone(api_key=pinecone_api_key())
 
 
-_TRANSIENT_NAMES = {
-    "TooManyRequestsError",
-    "ServiceUnavailableError",
-    "GatewayTimeoutError",
-    "InternalServerError",
-}
-
-
 def _is_transient(e: Exception) -> bool:
-    if isinstance(e, (httpx.TransportError, OSError, TimeoutError)):  # resets, DNS blips
+    if isinstance(e, (httpx.TransportError, OSError, TimeoutError)):  # resets, DNS blips, Ollama restarting
         return True
     name = type(e).__name__
-    return name in _TRANSIENT_NAMES or any(s in name for s in ("Connection", "Timeout", "Unavailable"))
+    return name in {"ServiceUnavailableError", "GatewayTimeoutError", "InternalServerError"} or any(
+        s in name for s in ("Connection", "Timeout", "Unavailable")
+    )
 
 
 def _with_retry(fn, tries: int = 8):
-    """Back off on 429 / network errors (rate-limited trial keys, flaky connections)."""
+    """Back off on network errors (flaky connections, Pinecone blips)."""
     for attempt in range(tries):
         try:
             return fn()
@@ -55,21 +44,29 @@ def _with_retry(fn, tries: int = 8):
             time.sleep(min(60, 3 * 2**attempt))
 
 
+# EmbeddingGemma prompt formats (model card): queries and documents are embedded differently.
+def _format(text: str, input_type: str) -> str:
+    if input_type == "search_query":
+        return f"task: search result | query: {text}"
+    return text  # documents arrive pre-formatted by upsert_chunks as "title: ... | text: ..."
+
+
 def embed_texts(texts: list[str], input_type: str) -> list[list[float]]:
-    """Embed texts with Cohere. input_type: 'search_document' for corpus, 'search_query' for queries."""
-    co = _cohere()
+    """Embed texts via local Ollama. input_type: 'search_document' for corpus, 'search_query' for queries."""
     out: list[list[float]] = []
-    for i in range(0, len(texts), EMBED_BATCH):
-        resp = _with_retry(
-            lambda: co.embed(
-                model=COHERE_EMBED_MODEL,
-                input_type=input_type,
-                texts=texts[i : i + EMBED_BATCH],
-                embedding_types=["float"],
-                output_dimension=EMBED_DIM,
-            )
-        )
-        out.extend(resp.embeddings.float_)
+    with httpx.Client(base_url=OLLAMA_HOST, timeout=600) as http:
+        for i in range(0, len(texts), EMBED_BATCH):
+            batch = [_format(t, input_type) for t in texts[i : i + EMBED_BATCH]]
+
+            def call():
+                r = http.post("/api/embed", json={"model": OLLAMA_EMBED_MODEL, "input": batch})
+                r.raise_for_status()
+                return r.json()["embeddings"]
+
+            vecs = _with_retry(call)
+            if len(vecs) != len(batch) or any(len(v) != EMBED_DIM for v in vecs):
+                raise RuntimeError(f"Ollama returned unexpected embeddings (want dim {EMBED_DIM})")
+            out.extend(vecs)
     return out
 
 
@@ -111,9 +108,9 @@ def upsert_chunks(chunks: list[Chunk]) -> None:
         batch = [c for c in batch if c.chunk_id not in have]
         if not batch:
             continue
-        # Embed title/section with the text so heading context is in the vector.
+        # Title/section go in with the text so heading context is in the vector.
         vecs = embed_texts(
-            [f"{c.title} | {c.section}\n{c.text}" for c in batch], "search_document"
+            [f"title: {c.title} | text: {c.section}\n{c.text}" for c in batch], "search_document"
         )
         _with_retry(
             lambda: index.upsert(
