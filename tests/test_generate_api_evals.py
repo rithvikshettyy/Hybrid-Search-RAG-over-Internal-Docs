@@ -1,6 +1,4 @@
-"""Offline tests: LLM / Cohere / Pinecone calls are faked."""
-
-from types import SimpleNamespace
+"""Offline tests: LLM / Pinecone calls are faked."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -60,18 +58,36 @@ def test_verify_unparseable_is_unsupported(monkeypatch):
 # ---- rerank ----
 
 
-def test_rerank_maps_indices(monkeypatch):
-    class FakeCo:
-        def __init__(self, **k): ...
-        def rerank(self, **k):
-            assert len(k["documents"]) == 3
-            res = [SimpleNamespace(index=2, relevance_score=0.9), SimpleNamespace(index=0, relevance_score=0.1)]
-            return SimpleNamespace(results=res)
+def _fake_llm(monkeypatch, reply):
+    monkeypatch.setattr(rerank_mod, "complete", lambda *a, **k: reply)
 
-    monkeypatch.setattr(rerank_mod.cohere, "ClientV2", FakeCo)
-    monkeypatch.setattr(rerank_mod, "cohere_api_key", lambda: "k")
+
+def test_rerank_follows_llm_order(monkeypatch):
+    _fake_llm(monkeypatch, '{"ranking": [2, 0]}')
     out = rerank_mod.rerank("q", [_c(0), _c(1), _c(2)], top_n=2)
-    assert [(c.chunk_id, s) for c, s in out] == [("c2", 0.9), ("c0", 0.1)]
+    assert [c.chunk_id for c, _ in out] == ["c2", "c0"]
+    assert out[0][1] > out[1][1]
+
+
+def test_rerank_drops_bad_ids_and_fills_omitted(monkeypatch):
+    # out-of-range, duplicate, bool, non-int ids ignored; omitted candidates keep input order after ranked ones
+    _fake_llm(monkeypatch, '{"ranking": [2, 2, 9, -1, true, "1"]}')
+    out = rerank_mod.rerank("q", [_c(0), _c(1), _c(2)], top_n=3)
+    assert [c.chunk_id for c, _ in out] == ["c2", "c0", "c1"]
+
+
+def test_rerank_unparseable_keeps_input_order(monkeypatch):
+    _fake_llm(monkeypatch, "sorry, no")
+    out = rerank_mod.rerank("q", [_c(0), _c(1), _c(2)], top_n=2)
+    assert [c.chunk_id for c, _ in out] == ["c0", "c1"]
+
+
+def test_rerank_bare_list_and_empty(monkeypatch):
+    _fake_llm(monkeypatch, "[1, 0]")
+    assert [c.chunk_id for c, _ in rerank_mod.rerank("q", [_c(0), _c(1)], top_n=5)] == ["c1", "c0"]
+    monkeypatch.setattr(rerank_mod, "complete", lambda *a, **k: pytest.fail("called"))
+    assert rerank_mod.rerank("q", [], top_n=3) == []
+    assert rerank_mod.rerank("q", [_c(0)], top_n=0) == []
 
 
 # ---- api ----

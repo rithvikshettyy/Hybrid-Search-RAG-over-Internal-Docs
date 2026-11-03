@@ -7,7 +7,7 @@ Retrieval-augmented QA over a document corpus using hybrid retrieval. Learning p
 2. Dense retrieval: local Ollama EmbeddingGemma (768-d) embeddings stored in Pinecone, top-k by cosine similarity
 3. Sparse retrieval: BM25 (`rank_bm25`) over the same chunks
 4. Fusion: Reciprocal Rank Fusion, `score = Σ 1/(60 + rank)`
-5. Rerank: Cohere Rerank on fused candidates, keep top-n
+5. Rerank: LLM listwise rerank (Gemini) of fused candidates in one call, keep top-n
 6. Generate: Gemini answers from context only, cites chunks inline `[n]`
 7. Verify: each claim checked against its cited chunk; unsupported claims flagged
 
@@ -15,18 +15,18 @@ Retrieval-augmented QA over a document corpus using hybrid retrieval. Learning p
 
 **Evals**: labeled question set, recall@5 / MRR across dense, BM25, hybrid, hybrid+rerank. Results: see `evals/`.
 
-**Stack**: Python, LangChain (loaders/splitters), Ollama (EmbeddingGemma embeddings), Pinecone, rank_bm25, Cohere (rerank), Gemini API, FastAPI
+**Stack**: Python, LangChain (loaders/splitters), Ollama (EmbeddingGemma embeddings), Pinecone, rank_bm25, Gemini API (rerank, answers, verification), FastAPI
 
 ## Setup
 
 ```
 uv sync
 ollama pull embeddinggemma   # embeddings run locally; Ollama must be running (default http://localhost:11434)
-cp .env.example .env         # fill GEMINI_API_KEY, COHERE_API_KEY, PINECONE_API_KEY
+cp .env.example .env         # fill GEMINI_API_KEY, PINECONE_API_KEY
 uv run pytest
 ```
 
-Optional env overrides: `OLLAMA_HOST`, `OLLAMA_EMBED_MODEL`, `EMBED_DIM` (768), `PINECONE_INDEX_NAME` (`handbook-hybrid-gemma`), `PINECONE_CLOUD` / `PINECONE_REGION`, `COHERE_RERANK_MODEL`, `GEMINI_MODEL`, `HANDBOOK_DIR`.
+Optional env overrides: `OLLAMA_HOST`, `OLLAMA_EMBED_MODEL`, `EMBED_DIM` (768), `PINECONE_INDEX_NAME` (`handbook-hybrid-gemma`), `PINECONE_CLOUD` / `PINECONE_REGION`, `GEMINI_MODEL`, `HANDBOOK_DIR`.
 
 ## Run
 

@@ -3,10 +3,10 @@
 Purpose: user is building this to LEARN RAG. User writes the core logic. Claude's role: scaffold, explain, review. Not implement.
 
 ## Pipeline
-ingest + chunk -> dense retrieval (Pinecone) + BM25 (rank_bm25) -> Reciprocal Rank Fusion -> Cohere Rerank -> Claude answers with inline [n] citations -> per-claim verification against cited chunk.
+ingest + chunk -> dense retrieval (Pinecone) + BM25 (rank_bm25) -> Reciprocal Rank Fusion -> LLM listwise rerank (Gemini) -> Claude answers with inline [n] citations -> per-claim verification against cited chunk.
 
 ## Stack
-Python 3.11+, uv, LangChain (loaders + text splitters ONLY), Pinecone, rank_bm25, Cohere (embed + rerank), Anthropic SDK, FastAPI, Pydantic, python-dotenv, pytest.
+Python 3.11+, uv, LangChain (loaders + text splitters ONLY), Pinecone, rank_bm25, Ollama EmbeddingGemma (embed), Gemini LLM rerank, Anthropic SDK, FastAPI, Pydantic, python-dotenv, pytest.
 Corpus: GitLab public handbook (markdown).
 
 ## Rules for every session

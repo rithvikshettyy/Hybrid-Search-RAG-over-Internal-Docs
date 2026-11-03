@@ -10,7 +10,6 @@ dependencies = [
     "langchain-text-splitters",
     "pinecone",
     "rank-bm25",
-    "cohere",
     "fastapi",
     "uvicorn",
     "pydantic",
